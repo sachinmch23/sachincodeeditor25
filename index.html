@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VS Code Clone</title>
+    <style>
+        body {   
+            display: flex;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        .sidebar {
+            width: 250px;
+            background: #1e1e1e;
+            color: white;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        .editor {
+            flex: 1;
+            background: #252526;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        .tabs {
+            display: flex;
+            background: #333;
+            padding: 5px;
+        }
+        .tab {
+            display: flex;
+            align-items: center;
+            padding: 5px 10px;
+            margin-right: 5px;
+            background: #444;
+            cursor: pointer;
+        }
+        .tab.active {
+            background: #007acc;
+        }
+        .tab .close {
+            margin-left: 10px;
+            cursor: pointer;
+            color: red;
+        }
+        .file-tree div {
+            padding: 5px;
+            cursor: pointer;
+            margin-left: 30px;
+            margin-top: 10px;
+        }
+        .file-tree div:hover {
+            background: #333;
+        }
+        textarea {
+            flex: 1;
+            background: white;
+            color: black;
+            border: 2px solid blue;
+            outline: none;
+            padding: 20px;
+            font-size: 16px;
+        }
+        .copy-btn, .save-btn, .run-btn, .open-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        .save-btn {
+            right: 70px;
+        }
+        .run-btn {
+            right: 135px;
+        }
+        .open-btn {
+            right: 200px;
+        }
+        .char-count, .zoom-btns, .color-picker {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            font-size: 12px;
+            color: #aaa;
+        }
+        .zoom-btns {
+            display: flex;
+            gap: 5px;
+            margin-right: 100px;
+        }
+        .zoom-btns button {
+            font-size: 12px;
+            padding: 5px;
+            cursor: pointer;
+            background: #007acc;
+            color: white;
+            border: none;
+            border-radius: 3px;
+        }
+        .color-picker {
+            display: flex;
+            gap: 10px;
+            margin-right:230px;
+        }
+        .color-picker input {
+            padding: 5px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar" style="padding:20px;">
+        <button onclick="createFile()"><img src="img/add-file.png" style="height: 20px;"/>New</button>
+        <button onclick="openFileInput()"><img src="img/folder.png" style="height: 20px;"/>Open</button>
+        <button onclick="saveFile()" ><img src="img/download.png" style="height: 20px;"/>Save</button>
+        <div class="file-tree" id="fileTree"></div>
+    </div>
+    <div class="editor">
+        <div class="tabs" id="tabs"></div>
+        <button class="copy-btn" onclick="copyText()">Copy</button>
+        <button class="save-btn" onclick="saveFile()">Save</button>
+        <button class="run-btn" onclick="runFile()">Run</button>
+        <textarea id="editor" oninput="updateLineNumbers()" onscroll="syncScroll()"></textarea>
+        <div id="charCount" class="char-count">0 characters</div>
+        <!-- Zoom In and Zoom Out Buttons -->
+        <div class="zoom-btns">
+            <button onclick="zoomIn()">Zoom In</button>
+            <button onclick="zoomOut()">Zoom Out</button>
+        </div>
+        <!-- Background and Text Color Pickers -->
+        <div class="color-picker">
+            <input type="color" id="bgColor" title="Background Color" onchange="changeBgColor()" />
+            <input type="color" id="textColor" title="Text Color" onchange="changeTextColor()" />
+        </div>
+    </div>
+
+    <!-- File input element to allow opening files -->
+    <input type="file" id="fileInput" style="display: none;" onchange="loadFile()" />
+
+    <script>
+        let files = {};
+        let openFiles = {};
+        let activeFile = null;
+        let currentFontSize = 16;
+
+        function createFile() {
+            const fileName = prompt("Enter file name:");
+            if (fileName) {
+                files[fileName] = "";
+                updateFileTree();
+            }
+        }
+
+        function deleteFile(fileName) {
+            if (confirm(`Delete ${fileName}?`)) {
+                delete files[fileName];
+                if (openFiles[fileName]) {
+                    closeTab(fileName);
+                }
+                updateFileTree();
+            }
+        }
+
+        function updateFileTree() {
+            const fileTree = document.getElementById("fileTree");
+            fileTree.innerHTML = "";
+            Object.keys(files).forEach(file => {
+                const fileElement = document.createElement("div");
+                fileElement.textContent = file;
+                fileElement.onclick = () => openFile(file);
+                fileElement.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    deleteFile(file);
+                };
+                fileTree.appendChild(fileElement);
+            });
+        }
+
+        function openFile(fileName) {
+            if (!openFiles[fileName]) {
+                openFiles[fileName] = files[fileName];
+                const tab = document.createElement("div");
+                tab.textContent = fileName;
+                tab.classList.add("tab");
+                
+                const closeButton = document.createElement("span");
+                closeButton.textContent = "×";
+                closeButton.classList.add("close");
+                closeButton.onclick = (e) => {
+                    e.stopPropagation();
+                    closeTab(fileName);
+                };
+                
+                tab.appendChild(closeButton);
+                tab.onclick = () => switchFile(fileName);
+                document.getElementById("tabs").appendChild(tab);
+            }
+            switchFile(fileName);
+        }
+
+        function switchFile(fileName) {
+            activeFile = fileName;
+            document.querySelectorAll(".tab").forEach(tab => {
+                tab.classList.toggle("active", tab.textContent.startsWith(fileName));
+            });
+            document.getElementById("editor").value = files[fileName];
+        }
+
+        function closeTab(fileName) {
+            delete openFiles[fileName];
+            const tabs = document.getElementById("tabs");
+            const tabElements = Array.from(tabs.getElementsByClassName("tab"));
+            const tabToRemove = tabElements.find(tab => tab.textContent.startsWith(fileName));
+            if (tabToRemove) {
+                tabs.removeChild(tabToRemove);
+            }
+            if (activeFile === fileName) {
+                document.getElementById("editor").value = "";
+                activeFile = null;
+            }
+        }
+
+        function copyText() {
+            const editor = document.getElementById("editor");
+            editor.select();
+            document.execCommand("copy");
+            alert("Copied to clipboard!");
+        }
+
+        function saveFile() {
+            if (activeFile) {
+                const content = document.getElementById("editor").value;
+                const blob = new Blob([content], { type: "text/plain" });
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = activeFile;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } else {
+                alert("No file is open to save!");
+            }
+        }
+
+        function runFile() {
+            if (activeFile && activeFile.endsWith(".html")) {
+                const blob = new Blob([files[activeFile]], { type: "text/html" });
+                const url = URL.createObjectURL(blob);
+                window.open(url, "_blank");
+            } else {
+                alert("Please open an HTML file to run.");
+            }
+        }
+
+        // Open file input when the Open File button is clicked
+        function openFileInput() {
+            document.getElementById("fileInput").click();
+        }
+
+        // Load selected file into the editor
+        function loadFile() {
+            const fileInput = document.getElementById("fileInput");
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(event) {
+                const content = event.target.result;
+                const fileName = file.name;
+                files[fileName] = content; // Store file content
+                openFile(fileName); // Open the file in the editor
+            }
+
+            reader.readAsText(file);
+        }
+
+        document.getElementById("editor").addEventListener("input", function() {
+            if (activeFile) {
+                files[activeFile] = this.value;
+            }
+
+            // Update the character count
+            const charCount = document.getElementById("charCount");
+            const textLength = this.value.length;
+            charCount.textContent = `${textLength} characters`;
+        });
+
+        // Zoom In function
+        function zoomIn() {
+            currentFontSize += 2;
+            document.getElementById("editor").style.fontSize = `${currentFontSize}px`;
+        }
+
+        // Zoom Out function
+        function zoomOut() {
+            if (currentFontSize > 8) {
+                currentFontSize -= 2;
+                document.getElementById("editor").style.fontSize = `${currentFontSize}px`;
+            }
+        }
+
+        // Change background color
+        function changeBgColor() {
+            const bgColor = document.getElementById("bgColor").value;
+            document.getElementById("editor").style.backgroundColor = bgColor;
+        }
+
+        // Change text color
+        function changeTextColor() {
+            const textColor = document.getElementById("textColor").value;
+            document.getElementById("editor").style.color = textColor;
+        }
+        
+    </script>
+</body>
+</html>
